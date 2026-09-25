@@ -1,0 +1,652 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Neuronas de la Mosca de la Fruta</title>
+<style>
+  :root {
+    --bg: #0b0f1a; --panel: #131a2b; --text: #e8ecf5; --accent: #ffcc00;
+    --neuron: #4fc3f7; --neuron-fire: #ff5252; --line: rgba(120,150,220,0.25);
+    --body-color: #3d3d3d; --wing-color: rgba(200,220,255,0.5);
+  }
+  :root:not([data-theme="light"]) { color-scheme: dark; }
+  :root[data-theme="light"] { --bg: #f2f4fa; --panel: #ffffff; --text: #1a1f2e; --line: rgba(60,80,150,0.2); }
+  * { box-sizing: border-box; }
+  html, body {
+    height: 100%; margin: 0;
+    padding-top: env(safe-area-inset-top, 0px); padding-bottom: env(safe-area-inset-bottom, 0px);
+    background: var(--bg); color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  }
+  .wrap { max-width: 700px; margin: 0 auto; padding: 20px 16px 24px; }
+  h1 { font-size: 1.4rem; text-align: center; margin: 8px 0 2px; }
+  h2 { font-size: 1rem; margin: 0 0 8px; }
+  .sub { text-align: center; opacity: 0.7; font-size: 0.85rem; margin-bottom: 16px; }
+  .stage, .ai-box, .info { background: var(--panel); border-radius: 16px; padding: 12px 14px; box-shadow: 0 4px 20px rgba(0,0,0,0.25); margin-bottom: 14px; }
+  svg { width: 100%; height: auto; display: block; touch-action: manipulation; }
+  .controls { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; margin-top: 14px; }
+  button { background: var(--accent); color: #1a1200; border: none; border-radius: 999px; padding: 10px 16px; font-size: 0.9rem; font-weight: 600; cursor: pointer; transition: transform 0.1s ease; }
+  button:active { transform: scale(0.95); }
+  button.secondary { background: transparent; color: var(--text); border: 1px solid var(--line); }
+  .info { font-size: 0.85rem; line-height: 1.55; }
+  .info b { color: var(--accent); }
+  .info h2 { font-size: 0.95rem; }
+  .stat-row { display: flex; justify-content: space-around; margin-top: 10px; font-size: 0.8rem; }
+  .stat-row div { text-align: center; }
+  .stat-num { font-size: 1.2rem; font-weight: 700; color: var(--neuron); }
+  .input-row { display: flex; gap: 8px; }
+  input[type=text] { flex: 1; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--line); background: transparent; color: var(--text); font-size: 0.95rem; }
+  .ai-response { margin-top: 10px; font-size: 0.85rem; padding: 10px 12px; background: rgba(79,195,247,0.1); border-left: 3px solid var(--neuron); border-radius: 8px; min-height: 20px; }
+  .action-tag { display: inline-block; background: var(--accent); color: #1a1200; padding: 2px 10px; border-radius: 999px; font-weight: 700; font-size: 0.75rem; margin-left: 6px; }
+  .body-stage { text-align: center; }
+  .body-label { font-size: 0.8rem; opacity: 0.7; margin-top: 4px; }
+  .energy-bar { height: 6px; background: var(--line); border-radius: 999px; margin-top: 8px; overflow: hidden; }
+  .energy-fill { height: 100%; background: var(--neuron); border-radius: 999px; transition: width 0.4s ease; }
+  .layer-legend { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; margin-top: 8px; font-size: 0.75rem; opacity: 0.85; }
+  .layer-legend span { display: flex; align-items: center; gap: 4px; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; background: var(--neuron); }
+  .credit { text-align: center; font-size: 0.75rem; opacity: 0.5; margin-top: 4px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>🪰 Neuronas de la Mosca de la Fruta</h1>
+  <div class="sub">Escríbele una orden y observa cómo su cerebro decide qué hacer</div>
+
+  <div class="ai-box">
+    <h2>🧠 Dile algo a la mosca</h2>
+    <div class="input-row">
+      <input type="text" id="cmdInput" placeholder="ej: vuela, come, un kebab..." maxlength="60">
+      <button id="btnThink">Pensar</button>
+    </div>
+    <div class="ai-response" id="aiResponse">Escribe una orden y presiona "Pensar" para ver qué decide hacer.</div>
+    <div class="body-label" id="traceBox" style="text-align:left;margin-top:6px;"></div>
+    <div class="energy-bar"><div class="energy-fill" id="energyFill" style="width:100%"></div></div>
+    <div class="body-label" style="text-align:left;margin-top:4px;">Energía de la mosca</div>
+  </div>
+
+  <div class="stage body-stage">
+    <svg id="thoughtSvg" viewBox="0 0 300 60" xmlns="http://www.w3.org/2000/svg" style="max-height:60px;"></svg>
+    <svg id="bodySvg" viewBox="0 0 300 160" xmlns="http://www.w3.org/2000/svg"></svg>
+    <div class="body-label" id="bodyLabel">En reposo</div>
+  </div>
+
+  <div class="stage">
+    <svg id="svgRoot" viewBox="0 0 360 320" xmlns="http://www.w3.org/2000/svg"></svg>
+    <div class="layer-legend">
+      <span><i class="dot"></i>Sentidos: reciben el estímulo (ej. ver, oler)</span>
+      <span><i class="dot"></i>Interneuronas A: primer filtro de la señal</span>
+      <span><i class="dot"></i>Interneuronas B: combinan y deciden</span>
+      <span><i class="dot" style="background:var(--accent)"></i>Motora: mueve el cuerpo</span>
+    </div>
+  </div>
+
+  <div class="stat-row">
+    <div><div class="stat-num" id="statFired">0</div>disparos</div>
+    <div><div class="stat-num" id="statActive">0</div>activas</div>
+    <div><div class="stat-num" id="statGen">0</div>generación</div>
+  </div>
+
+  <div class="controls">
+    <button id="btnRandom" class="secondary">🎲 Nueva red</button>
+    <button id="btnAuto" class="secondary">▶️ Auto</button>
+  </div>
+
+  <div class="info">
+    <h2>🧬 ¿Qué son "Interneuronas A" y "B"?</h2>
+    No son nombres científicos reales — son una simplificación mía para que se pueda dibujar.
+    En una mosca de verdad hay <b>miles</b> de tipos distintos de neuronas intermedias entre
+    los sentidos y los músculos. Aquí las agrupé en solo dos capas: la <b>A</b> representa el
+    primer filtro de la señal (como cuando tus ojos mandan la imagen a la parte del cerebro
+    que solo detecta "hay algo moviéndose"), y la <b>B</b> representa neuronas que combinan
+    varias señales para tomar una decisión más completa antes de mandarla a los músculos.
+  </div>
+
+  <div class="info">
+    <h2>🔬 ¿Cómo lo descubrieron de verdad?</h2>
+    Fue un trabajo enorme. Equipos de las universidades de Cambridge, Johns Hopkins,
+    Princeton y el instituto Janelia (EE. UU.) tomaron <b>miles de fotos con microscopios
+    electrónicos</b> de rebanadas ultra finas del cerebro de una mosca — tan delgadas que
+    se necesitaban miles para cruzar un solo cerebro, del tamaño de una semilla de amapola.
+    Luego usaron computadoras e inteligencia artificial para unir esas fotos y reconstruir,
+    neurona por neurona, cada conexión. En 2023 terminaron el mapa completo de una larva
+    (3,016 neuronas y 548,000 conexiones), y en 2024 el de una mosca adulta entera:
+    <b>139,255 neuronas y 54.5 millones de conexiones</b> — le llamaron el
+    "Google Maps del cerebro". Ese mapa completo se llama <b>conectoma</b>, y es la razón
+    por la que hoy sabemos, más o menos, cómo estas neuronas producen comportamientos
+    como volar, comer o escapar.
+  </div>
+
+  <div class="credit">Página creada por Nelson</div>
+</div>
+
+<script>
+(function() {
+  const NS = "http://www.w3.org/2000/svg";
+
+  // ---------- ACTION CLASSIFIER (simple rule-based "AI") ----------
+  const ACTIONS = {
+    volar:     { label: 'Volar',      emoji: '🕊️', keywords: ['vola','vuel','fly','despeg','elevate','remonta','alzate','al aire','alza el vuelo'] },
+    caminar:   { label: 'Caminar',    emoji: '🚶', keywords: ['camin','and','walk','muev','desplaz','arrastra','ve para','trota'] },
+    comer:     { label: 'Comer',      emoji: '🍎', keywords: ['come','com','eat','alimenta','traga','devora','merienda','bocado','hambre'] },
+    escapar:   { label: 'Escapar',    emoji: '💨', keywords: ['escap','huy','corre','peligro','miedo','larga','sal de ahi','esconde','fuga'] },
+    dormir:    { label: 'Reposar',    emoji: '😴', keywords: ['duer','descans','reposa','quiet','siesta','apaga','relaj','cansad'] },
+    limpiarse: { label: 'Limpiarse',  emoji: '✨', keywords: ['limpi','asea','pata','bañate','arregla','peina'] },
+    kebab:     { label: '¡Kebab!',    emoji: '🍢', keywords: ['kebab','shawarma','asador','taco','carne asada'] },
+    calor:     { label: 'Siente calor', emoji: '🥵', keywords: ['calor','caliente','sol','quema','sofoc','verano'] },
+    frio:      { label: 'Siente frío',  emoji: '🥶', keywords: ['frio','frío','helad','nieve','invierno','congela'] },
+    luz:       { label: 'Ve luz',       emoji: '💡', keywords: ['luz','brill','foco','flash','destell','sol sale'] },
+    jugar:     { label: 'Jugar',        emoji: '🎈', keywords: ['juega','diviert','pelota','persigue algo','entretente'] },
+    explorar:  { label: 'Explorar',     emoji: '🧭', keywords: ['explor','descubre','investiga','curiose','husmea'] },
+    pelear:    { label: 'Pelear',       emoji: '🥊', keywords: ['pele','lucha','defiend','ataca','enoja'] }
+  };
+
+  // reacciones a comentarios humanos: cumplidos, insultos, sarcasmo, cosas raras
+  const SOCIAL = {
+    cumplido: ['genial','increible','bien hecho','me encanta','hermosa','bonita','buenisim','crack','sos lo maximo','eres la mejor','te amo','excelente trabajo'],
+    insulto:  ['inutil','tonta','fea','estupid','no sirves','malisim','basura','patetica','das pena','que aburrid','esto es una tonteria','eres mala','no funciona nada'],
+    existencial: ['por que existo','tiene sentido la vida','cual es tu proposito','eres real','sientes algo','tienes alma','me quieres']
+  };
+
+  function detectSocial(text) {
+    const t = text.toLowerCase();
+    for (const cat in SOCIAL) if (SOCIAL[cat].some(k => t.includes(k))) return cat;
+    return null;
+  }
+
+  const SOCIAL_RESPONSES = {
+    cumplido: { mood: 'orgullosa', text: 'Sus neuronas de recompensa (parecidas a la dopamina humana) se disparan con el elogio — ¡le encantó!' },
+    insulto: { mood: 'sarcastica', text: 'No tiene neuronas para sentirse ofendida, pero le da igual: sigue haciendo lo suyo, sin dramas.' },
+    existencial: { mood: 'curiosa', text: 'Con 139,000 neuronas no da para filosofar mucho, pero agradece que se lo preguntes.' }
+  };
+
+  const CONFUSED_REPLIES = [
+    'No reconoce ninguna palabra clave — se queda mirando al vacío.',
+    'Sus 4 neuronas visuales no detectan nada relacionado — puro silencio neuronal.',
+    'La señal es demasiado rara para su cerebro de mosca: ignora el mensaje.',
+    'Ningún circuito conocido se activa — la mosca simplemente parpadea.'
+  ];
+
+  const RESPONSES = {
+    volar: 'Las neuronas visuales detectan espacio abierto arriba → se activan los músculos de vuelo.',
+    caminar: 'Las neuronas de las patas reciben la orden y coordinan un patrón de paso alterno.',
+    comer: 'Las neuronas olfativas detectan comida → se activa el reflejo de extender la probóscide.',
+    escapar: 'Las neuronas gigantes de escape se disparan primero: reacción refleja, casi sin pensar.',
+    dormir: 'La actividad general baja, solo quedan activas unas pocas neuronas de "vigilancia".',
+    limpiarse: 'Se activa un circuito repetitivo de acicalado en las patas delanteras.',
+    kebab: 'Sus neuronas olfativas se vuelven locas con el olor a carne asada — ¡acción de fiesta!',
+    calor: 'Neuronas termosensoriales en las antenas detectan calor → gasta energía intentando enfriarse.',
+    frio: 'Las mismas neuronas termosensoriales, pero en el otro extremo → el cuerpo se pone lento y rígido.',
+    luz: 'Los ojos (facetados, con miles de lentes) detectan el cambio de luz → orienta el vuelo hacia ella.',
+    jugar: 'Circuitos de exploración se activan sin un objetivo fijo — vuelo errático y curioso.',
+    explorar: 'Las neuronas de navegación (en el "complejo central" del cerebro) trazan un nuevo camino.',
+    pelear: 'Neuronas agresivas (sí, existen) se activan ante la amenaza — postura defensiva.'
+  };
+
+  // moods driven by energy + last action
+  const THOUGHTS = {
+    confundida: { emoji: '❓', text: 'confundida...' },
+    cansada:    { emoji: '😪', text: 'cansada...' },
+    feliz:      { emoji: '😋', text: '¡feliz!' },
+    alerta:     { emoji: '😳', text: '¡alerta!' },
+    tranquila:  { emoji: '😌', text: 'tranquila' },
+    curiosa:    { emoji: '🤔', text: 'curiosa' },
+    aburrida:   { emoji: '🙄', text: 'ya, otra vez no...' },
+    terca:      { emoji: '😤', text: '¡no quiero!' },
+    acalorada:  { emoji: '🥵', text: 'tengo calor!' },
+    congelada:  { emoji: '🥶', text: 'tengo frío!' },
+    deslumbrada:{ emoji: '💡', text: '¡qué luz!' },
+    orgullosa:  { emoji: '😊', text: 'gracias!' },
+    sarcastica: { emoji: '😏', text: 'ajá, claro...' }
+  };
+
+  // ---- fuzzy matching: tolera errores de escritura (distancia de Levenshtein simple) ----
+  function levenshtein(a, b) {
+    const m = [];
+    for (let i = 0; i <= b.length; i++) m[i] = [i];
+    for (let j = 0; j <= a.length; j++) m[0][j] = j;
+    for (let i = 1; i <= b.length; i++) {
+      for (let j = 1; j <= a.length; j++) {
+        m[i][j] = b.charAt(i - 1) === a.charAt(j - 1)
+          ? m[i - 1][j - 1]
+          : Math.min(m[i - 1][j - 1] + 1, m[i][j - 1] + 1, m[i - 1][j] + 1);
+      }
+    }
+    return m[b.length][a.length];
+  }
+
+  // Divide la frase en pedazos por conectores como "y", "luego", "," -> permite varias acciones
+  function splitClauses(text) {
+    return text.toLowerCase().split(/,| y | luego | despu[eé]s |\by\b/).map(s => s.trim()).filter(Boolean);
+  }
+
+  // Clasifica una sola frase con puntaje de confianza + detecta negación ("no vueles")
+  function classifyClause(clause) {
+    const negated = /\bno\b/.test(clause);
+    let best = null, bestScore = 0;
+    for (const key in ACTIONS) {
+      ACTIONS[key].keywords.forEach(k => {
+        clause.split(/\s+/).forEach(word => {
+          if (word.includes(k) || k.includes(word)) {
+            const score = 1;
+            if (score > bestScore) { bestScore = score; best = key; }
+          } else {
+            const dist = levenshtein(word, k);
+            const score2 = 1 - dist / Math.max(word.length, k.length);
+            if (dist <= 2 && score2 > bestScore) { bestScore = score2; best = key; }
+          }
+        });
+      });
+    }
+    return { action: best, confidence: Math.round(bestScore * 100), negated };
+  }
+
+  // Historial corto para detectar aburrimiento por repetición
+  let history = [];
+
+  function classify(text) {
+    const clauses = splitClauses(text);
+    const results = clauses.map(classifyClause).filter(r => r.action);
+    return results.length ? results : [{ action: null, confidence: 0, negated: false }];
+  }
+
+  let energy = 100;
+
+  function moodFor(action, negated) {
+    if (negated) return 'terca';
+    const recentSame = history.slice(-2).every(a => a === action) && action !== null;
+    if (recentSame) return 'aburrida';
+    if (energy < 25) return 'cansada';
+    if (!action) return 'confundida';
+    if (action === 'kebab' || action === 'comer') return 'feliz';
+    if (action === 'escapar') return 'alerta';
+    if (action === 'dormir') return 'tranquila';
+    if (action === 'calor') return 'acalorada';
+    if (action === 'frio') return 'congelada';
+    if (action === 'luz') return 'deslumbrada';
+    return 'curiosa';
+  }
+
+  // ---------- NEURON NETWORK ----------
+  let nodes = [], edges = [], firedCount = 0, generation = 0, autoTimer = null;
+  const svg = document.getElementById('svgRoot');
+  const H = 320;
+  const LAYERS = [
+    { label: 'Sentidos', x: 40, count: 4 },
+    { label: 'Interneuronas A', x: 130, count: 6 },
+    { label: 'Interneuronas B', x: 220, count: 6 },
+    { label: 'Motora', x: 310, count: 3 }
+  ];
+
+  function getVar(name) { return getComputedStyle(document.documentElement).getPropertyValue(name).trim() || '#4fc3f7'; }
+
+  function buildNetwork() {
+    nodes = []; edges = [];
+    let id = 0;
+    LAYERS.forEach((layer, li) => {
+      const spacing = H / (layer.count + 1);
+      for (let i = 0; i < layer.count; i++) nodes.push({ id: id++, layer: li, x: layer.x, y: spacing * (i + 1), active: false });
+    });
+    for (let li = 0; li < LAYERS.length - 1; li++) {
+      const fromNodes = nodes.filter(n => n.layer === li);
+      const toNodes = nodes.filter(n => n.layer === li + 1);
+      fromNodes.forEach(fn => {
+        const connections = 1 + Math.floor(Math.random() * Math.min(3, toNodes.length));
+        const shuffled = [...toNodes].sort(() => Math.random() - 0.5);
+        for (let i = 0; i < connections; i++) edges.push({ from: fn.id, to: shuffled[i].id, weight: (0.4 + Math.random() * 0.6).toFixed(2) });
+      });
+    }
+  }
+
+  function renderNetwork() {
+    svg.innerHTML = '';
+    LAYERS.forEach(layer => {
+      const t = document.createElementNS(NS, 'text');
+      t.setAttribute('x', layer.x); t.setAttribute('y', 16);
+      t.setAttribute('text-anchor', 'middle'); t.setAttribute('font-size', '9');
+      t.setAttribute('fill', 'currentColor'); t.setAttribute('opacity', '0.55');
+      t.textContent = layer.label;
+      svg.appendChild(t);
+    });
+    edges.forEach(e => {
+      const a = nodes[e.from], b = nodes[e.to];
+      const line = document.createElementNS(NS, 'line');
+      line.setAttribute('x1', a.x); line.setAttribute('y1', a.y);
+      line.setAttribute('x2', b.x); line.setAttribute('y2', b.y);
+      line.setAttribute('stroke', e.pulsing ? getVar('--neuron-fire') : getVar('--line'));
+      line.setAttribute('stroke-width', e.pulsing ? '2.2' : '1.2');
+      svg.appendChild(line);
+    });
+    nodes.forEach(n => {
+      const c = document.createElementNS(NS, 'circle');
+      c.setAttribute('cx', n.x); c.setAttribute('cy', n.y);
+      c.setAttribute('r', n.active ? 10 : 7);
+      c.setAttribute('fill', n.active ? getVar('--neuron-fire') : getVar('--neuron'));
+      c.setAttribute('opacity', n.active ? '1' : '0.6');
+      svg.appendChild(c);
+    });
+    document.getElementById('statFired').textContent = firedCount;
+    document.getElementById('statActive').textContent = nodes.filter(n => n.active).length;
+    document.getElementById('statGen').textContent = generation;
+  }
+
+  function resetActivity() { nodes.forEach(n => n.active = false); edges.forEach(e => e.pulsing = false); }
+  function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+  async function stimulateNetwork() {
+    resetActivity();
+    generation++;
+    for (let li = 0; li < LAYERS.length; li++) {
+      const layerNodes = nodes.filter(n => n.layer === li);
+      layerNodes.forEach(n => {
+        if (li === 0) { n.active = true; }
+        else {
+          const incoming = edges.filter(e => e.to === n.id && nodes[e.from].active);
+          const signal = incoming.reduce((s, e) => s + parseFloat(e.weight), 0);
+          n.active = signal > 0.5 && Math.random() < 0.85;
+        }
+      });
+      edges.forEach(e => { e.pulsing = nodes[e.from].active && nodes[e.from].layer === li; });
+      renderNetwork();
+      firedCount += layerNodes.filter(n => n.active).length;
+      await sleep(260);
+    }
+    await sleep(350);
+    resetActivity();
+    renderNetwork();
+  }
+
+  // ---------- THOUGHT BUBBLE ----------
+  const thoughtSvg = document.getElementById('thoughtSvg');
+  function drawThought(mood) {
+    thoughtSvg.innerHTML = '';
+    const t = THOUGHTS[mood] || THOUGHTS.curiosa;
+    const bubble = document.createElementNS(NS, 'rect');
+    bubble.setAttribute('x', 90); bubble.setAttribute('y', 8);
+    bubble.setAttribute('width', 120); bubble.setAttribute('height', 30);
+    bubble.setAttribute('rx', 15);
+    bubble.setAttribute('fill', getVar('--panel'));
+    bubble.setAttribute('stroke', getVar('--line'));
+    thoughtSvg.appendChild(bubble);
+    for (let i = 0; i < 3; i++) {
+      const c = document.createElementNS(NS, 'circle');
+      c.setAttribute('cx', 150 - i * 8);
+      c.setAttribute('cy', 42 + i * 6);
+      c.setAttribute('r', 3 - i * 0.7);
+      c.setAttribute('fill', getVar('--panel'));
+      c.setAttribute('stroke', getVar('--line'));
+      thoughtSvg.appendChild(c);
+    }
+    const txt = document.createElementNS(NS, 'text');
+    txt.setAttribute('x', 150); txt.setAttribute('y', 28);
+    txt.setAttribute('text-anchor', 'middle');
+    txt.setAttribute('font-size', '13');
+    txt.setAttribute('fill', 'currentColor');
+    txt.textContent = t.emoji + ' ' + t.text;
+    thoughtSvg.appendChild(txt);
+  }
+
+  // ---------- BODY ANIMATION ----------
+  const bodySvg = document.getElementById('bodySvg');
+  const bodyLabel = document.getElementById('bodyLabel');
+  let bodyAnimFrame = null;
+
+  function drawFlyBody(pose) {
+    bodySvg.innerHTML = '';
+    const cx = 150, cy = 80 + pose.bob;
+
+    // defs: gradiente para dar brillo al cuerpo
+    const defs = document.createElementNS(NS, 'defs');
+    const grad = document.createElementNS(NS, 'radialGradient');
+    grad.setAttribute('id', 'bodyShine');
+    grad.setAttribute('cx', '35%'); grad.setAttribute('cy', '30%');
+    const stop1 = document.createElementNS(NS, 'stop');
+    stop1.setAttribute('offset', '0%'); stop1.setAttribute('stop-color', '#5c6270');
+    const stop2 = document.createElementNS(NS, 'stop');
+    stop2.setAttribute('offset', '100%'); stop2.setAttribute('stop-color', '#1c1e26');
+    grad.appendChild(stop1); grad.appendChild(stop2);
+    defs.appendChild(grad);
+    bodySvg.appendChild(defs);
+
+    [-1, 1].forEach(side => {
+      const wx = cx + side * 16, wy = cy - 12;
+      if (pose.motionBlur) {
+        [18, 34].forEach((offset, i) => {
+          const trail = document.createElementNS(NS, 'path');
+          trail.setAttribute('d', `M${wx},${wy} Q${wx + side * 30},${wy - 14} ${wx + side * 4},${wy + 16} Q${wx - side * 6},${wy + 4} ${wx},${wy}`);
+          trail.setAttribute('fill', 'var(--wing-color)');
+          trail.setAttribute('opacity', 0.22 - i * 0.09);
+          trail.setAttribute('transform', `rotate(${side * (pose.wingAngle - offset)} ${wx} ${wy})`);
+          bodySvg.appendChild(trail);
+        });
+      }
+      const wing = document.createElementNS(NS, 'path');
+      wing.setAttribute('d', `M${wx},${wy} Q${wx + side * 30},${wy - 14} ${wx + side * 4},${wy + 16} Q${wx - side * 6},${wy + 4} ${wx},${wy}`);
+      wing.setAttribute('fill', 'var(--wing-color)');
+      wing.setAttribute('stroke', 'rgba(255,255,255,0.4)');
+      wing.setAttribute('stroke-width', '0.6');
+      wing.setAttribute('transform', `rotate(${side * pose.wingAngle} ${wx} ${wy})`);
+      bodySvg.appendChild(wing);
+      // vena central del ala
+      const vein = document.createElementNS(NS, 'line');
+      vein.setAttribute('x1', wx); vein.setAttribute('y1', wy);
+      vein.setAttribute('x2', wx + side * 20); vein.setAttribute('y2', wy - 4);
+      vein.setAttribute('stroke', 'rgba(255,255,255,0.5)'); vein.setAttribute('stroke-width', '0.6');
+      vein.setAttribute('transform', `rotate(${side * pose.wingAngle} ${wx} ${wy})`);
+      bodySvg.appendChild(vein);
+    });
+
+    // patas con dos segmentos (articulación) para verse más reales
+    for (let i = -1; i <= 1; i++) {
+      [-1, 1].forEach(side => {
+        const lx = cx + i * 9, ly = cy + 9;
+        const phase = Math.sin(pose.legPhase + i) * pose.legSwing;
+        const kx = lx + side * 9 + phase * 0.5, ky = ly + 12;
+        const fx = kx + side * 9 + phase, fy = ky + 12;
+        const leg = document.createElementNS(NS, 'polyline');
+        leg.setAttribute('points', `${lx},${ly} ${kx},${ky} ${fx},${fy}`);
+        leg.setAttribute('fill', 'none');
+        leg.setAttribute('stroke', '#2a2c33'); leg.setAttribute('stroke-width', '2');
+        leg.setAttribute('stroke-linecap', 'round'); leg.setAttribute('stroke-linejoin', 'round');
+        bodySvg.appendChild(leg);
+      });
+    }
+
+    const abdomen = document.createElementNS(NS, 'ellipse');
+    abdomen.setAttribute('cx', cx - 30); abdomen.setAttribute('cy', cy);
+    abdomen.setAttribute('rx', 22); abdomen.setAttribute('ry', 13);
+    abdomen.setAttribute('fill', 'url(#bodyShine)');
+    bodySvg.appendChild(abdomen);
+    // rayas del abdomen
+    for (let s = -12; s <= 12; s += 8) {
+      const stripe = document.createElementNS(NS, 'line');
+      stripe.setAttribute('x1', cx - 30 + s); stripe.setAttribute('y1', cy - 10);
+      stripe.setAttribute('x2', cx - 30 + s); stripe.setAttribute('y2', cy + 10);
+      stripe.setAttribute('stroke', 'rgba(0,0,0,0.25)'); stripe.setAttribute('stroke-width', '2');
+      bodySvg.appendChild(stripe);
+    }
+
+    const thorax = document.createElementNS(NS, 'circle');
+    thorax.setAttribute('cx', cx); thorax.setAttribute('cy', cy); thorax.setAttribute('r', 14);
+    thorax.setAttribute('fill', 'url(#bodyShine)');
+    bodySvg.appendChild(thorax);
+
+    const head = document.createElementNS(NS, 'circle');
+    head.setAttribute('cx', cx + 22); head.setAttribute('cy', cy - 2); head.setAttribute('r', 10);
+    head.setAttribute('fill', 'url(#bodyShine)');
+    bodySvg.appendChild(head);
+
+    // antenas
+    [-1, 1].forEach(side => {
+      const ant = document.createElementNS(NS, 'line');
+      ant.setAttribute('x1', cx + 26); ant.setAttribute('y1', cy - 8);
+      ant.setAttribute('x2', cx + 30); ant.setAttribute('y2', cy - 15 + side * 3);
+      ant.setAttribute('stroke', '#2a2c33'); ant.setAttribute('stroke-width', '1.4');
+      bodySvg.appendChild(ant);
+    });
+
+    // ojo compuesto: base roja + puntitos de facetas
+    const eye = document.createElementNS(NS, 'circle');
+    eye.setAttribute('cx', cx + 26); eye.setAttribute('cy', cy - 4); eye.setAttribute('r', 6);
+    eye.setAttribute('fill', '#b5342a');
+    bodySvg.appendChild(eye);
+    [[-2,-2],[1,-3],[3,0],[-1,2],[2,3]].forEach(([dx,dy]) => {
+      const facet = document.createElementNS(NS, 'circle');
+      facet.setAttribute('cx', cx + 26 + dx); facet.setAttribute('cy', cy - 4 + dy);
+      facet.setAttribute('r', 1);
+      facet.setAttribute('fill', 'rgba(255,150,120,0.7)');
+      bodySvg.appendChild(facet);
+    });
+
+    if (pose.proboscis) {
+      const prob = document.createElementNS(NS, 'line');
+      prob.setAttribute('x1', cx + 30); prob.setAttribute('y1', cy);
+      prob.setAttribute('x2', cx + 38); prob.setAttribute('y2', cy + 9);
+      prob.setAttribute('stroke', '#2a2c33'); prob.setAttribute('stroke-width', '2');
+      bodySvg.appendChild(prob);
+    }
+
+    if (pose.zzz) {
+      const z = document.createElementNS(NS, 'text');
+      z.setAttribute('x', cx + 20); z.setAttribute('y', cy - 25);
+      z.setAttribute('font-size', '14'); z.setAttribute('fill', 'currentColor');
+      z.textContent = 'z z z';
+      bodySvg.appendChild(z);
+    }
+
+    if (pose.kebab) {
+      // draw a tiny kebab skewer near the fly
+      const skewer = document.createElementNS(NS, 'line');
+      skewer.setAttribute('x1', cx + 45); skewer.setAttribute('y1', cy - 10);
+      skewer.setAttribute('x2', cx + 45); skewer.setAttribute('y2', cy + 20);
+      skewer.setAttribute('stroke', '#8d6e63'); skewer.setAttribute('stroke-width', '2');
+      bodySvg.appendChild(skewer);
+      const meatColors = ['#c0392b', '#e67e22', '#c0392b'];
+      meatColors.forEach((col, i) => {
+        const m = document.createElementNS(NS, 'rect');
+        m.setAttribute('x', cx + 40); m.setAttribute('y', cy - 8 + i * 9);
+        m.setAttribute('width', 10); m.setAttribute('height', 7);
+        m.setAttribute('rx', 2);
+        m.setAttribute('fill', col);
+        bodySvg.appendChild(m);
+      });
+    }
+  }
+
+  function stopBodyAnim() { if (bodyAnimFrame) { clearInterval(bodyAnimFrame); bodyAnimFrame = null; } }
+
+  function playAction(action, mood) {
+    stopBodyAnim();
+    let t = 0;
+    let cfg = {
+      volar:     { wingAmp: 35, wingSpeed: 0.9, bobAmp: 6, legSwing: 0, label: 'Volando' },
+      caminar:   { wingAmp: 2,  wingSpeed: 0.1, bobAmp: 1, legSwing: 7, label: 'Caminando' },
+      comer:     { wingAmp: 1,  wingSpeed: 0.05,bobAmp: 0, legSwing: 1, proboscis: true, label: 'Comiendo' },
+      escapar:   { wingAmp: 45, wingSpeed: 1.6, bobAmp: 3, legSwing: 2, label: 'Escapando' },
+      dormir:    { wingAmp: 1,  wingSpeed: 0.02,bobAmp: 0.5, legSwing: 0, zzz: true, label: 'Durmiendo' },
+      limpiarse: { wingAmp: 2,  wingSpeed: 0.1, bobAmp: 0.5, legSwing: 4, label: 'Limpiándose' },
+      kebab:     { wingAmp: 3,  wingSpeed: 0.15,bobAmp: 1, legSwing: 1, proboscis: true, kebab: true, label: '¡Comiendo kebab!' },
+      calor:     { wingAmp: 6,  wingSpeed: 1.2, bobAmp: 0, legSwing: 3, label: 'Jadeando de calor' },
+      frio:      { wingAmp: 1,  wingSpeed: 0.05,bobAmp: 0, legSwing: 0.5, label: 'Temblando de frío' },
+      luz:       { wingAmp: 20, wingSpeed: 0.5, bobAmp: 4, legSwing: 0, label: 'Girando hacia la luz' },
+      jugar:     { wingAmp: 25, wingSpeed: 0.7, bobAmp: 8, legSwing: 2, label: 'Jugando' },
+      explorar:  { wingAmp: 10, wingSpeed: 0.4, bobAmp: 2, legSwing: 5, label: 'Explorando' },
+      pelear:    { wingAmp: 15, wingSpeed: 1.0, bobAmp: 1, legSwing: 6, label: 'Peleando' },
+      desconocido: { wingAmp: 8, wingSpeed: 0.3, bobAmp: 2, legSwing: 2, label: 'Pensando...' }
+    }[action] || { wingAmp: 5, wingSpeed: 0.2, bobAmp: 1, legSwing: 1, label: 'En reposo' };
+
+    if (mood === 'cansada') {
+      cfg = Object.assign({}, cfg, { wingAmp: cfg.wingAmp * 0.4, wingSpeed: cfg.wingSpeed * 0.5, legSwing: cfg.legSwing * 0.4 });
+    }
+
+    bodyLabel.textContent = cfg.label + ' ' + (ACTIONS[action] ? ACTIONS[action].emoji : '🤔');
+    drawThought(mood);
+
+    bodyAnimFrame = setInterval(() => {
+      t += 1;
+      drawFlyBody({
+        wingAngle: Math.sin(t * cfg.wingSpeed) * cfg.wingAmp,
+        legPhase: t * 0.3,
+        legSwing: cfg.legSwing,
+        bob: Math.sin(t * cfg.wingSpeed * 0.5) * cfg.bobAmp,
+        proboscis: cfg.proboscis || false,
+        zzz: cfg.zzz || false,
+        kebab: cfg.kebab || false,
+        motionBlur: cfg.wingAmp >= 20
+      });
+    }, 40);
+
+    setTimeout(() => {
+      stopBodyAnim();
+      bodyLabel.textContent = 'En reposo';
+      drawFlyBody({ wingAngle: 3, legPhase: 0, legSwing: 0, bob: 0 });
+      drawThought(energy < 25 ? 'cansada' : 'tranquila');
+    }, 4000);
+  }
+
+  function updateEnergyBar() {
+    document.getElementById('energyFill').style.width = Math.max(0, energy) + '%';
+  }
+
+  // ---------- WIRE UP UI ----------
+  async function handleThink() {
+    const input = document.getElementById('cmdInput');
+    const responseBox = document.getElementById('aiResponse');
+    const text = input.value.trim();
+    if (!text) return;
+
+    const social = detectSocial(text);
+    if (social) {
+      const s = SOCIAL_RESPONSES[social];
+      responseBox.innerHTML = `<b>Decisión:</b> ${s.text} <span class="action-tag">${social}</span>`;
+      drawThought(s.mood);
+      return;
+    }
+
+    const results = classify(text); // array of {action, confidence, negated}
+    const traceBox = document.getElementById('traceBox');
+    traceBox.textContent = '🔎 Analizando: ' + results.map(r =>
+      r.action ? `"${ACTIONS[r.action] ? ACTIONS[r.action].label : r.action}" (${r.confidence}% seguro${r.negated ? ', negado' : ''})` : 'sin coincidencia'
+    ).join('  →  ');
+
+    let combinedHtml = '';
+    for (const r of results) {
+      const action = r.action;
+      const mood = moodFor(action, r.negated);
+      const label = !action ? 'Desconocido' : (r.negated ? 'Se niega a ' + ACTIONS[action].label.toLowerCase() : ACTIONS[action].label);
+      const respText = r.negated ? 'Detecta la orden pero también la negación "no" → decide no obedecer.' : (action ? RESPONSES[action] : CONFUSED_REPLIES[Math.floor(Math.random() * CONFUSED_REPLIES.length)]);
+
+      combinedHtml += `<div><b>Decisión:</b> ${respText} <span class="action-tag">${label}</span></div>`;
+      playAction(r.negated ? 'desconocido' : action, mood);
+      await stimulateNetwork();
+
+      history.push(action);
+      if (history.length > 5) history.shift();
+
+      const drain = action === 'dormir' ? -30 : (mood === 'aburrida' ? 20 : 12);
+      energy = Math.min(100, Math.max(0, energy - drain));
+      updateEnergyBar();
+    }
+    responseBox.innerHTML = combinedHtml;
+  }
+
+  document.getElementById('btnThink').addEventListener('click', handleThink);
+  document.getElementById('cmdInput').addEventListener('keydown', e => { if (e.key === 'Enter') handleThink(); });
+
+  document.getElementById('btnRandom').addEventListener('click', () => { buildNetwork(); renderNetwork(); });
+
+  document.getElementById('btnAuto').addEventListener('click', function() {
+    if (autoTimer) { clearInterval(autoTimer); autoTimer = null; this.textContent = '▶️ Auto'; }
+    else { this.textContent = '⏸️ Pausar'; stimulateNetwork(); autoTimer = setInterval(stimulateNetwork, 2200); }
+  });
+
+  buildNetwork();
+  renderNetwork();
+  drawFlyBody({ wingAngle: 3, legPhase: 0, legSwing: 0, bob: 0 });
+  drawThought('tranquila');
+  updateEnergyBar();
+})();
+</script>
+</body>
+</html>
